@@ -1,10 +1,11 @@
 local AllIDs = {}
-local FailedIDs = {}
 local foundAnything = ""
 local actualHour = os.date("!*t").hour
 local S_T = game:GetService("TeleportService")
 local S_H = game:GetService("HttpService")
 local RS = game:GetService("ReplicatedStorage")
+
+local isBloxFruits = RS:FindFirstChild("__ServerBrowser") ~= nil
 
 local File = pcall(function()
     AllIDs = S_H:JSONDecode(readfile("server-hop-temp.json"))
@@ -16,65 +17,59 @@ if not File then
     end)
 end
 
-local function SmartTeleport(placeId, jobId)
-    if jobId == game.JobId then return false end
-    local sb = RS:FindFirstChild("__ServerBrowser")
-    if sb and sb:IsA("RemoteFunction") then
-        local success = pcall(function()
-            return sb:InvokeServer("teleport", jobId)
-        end)
-        if success then return true end
-    end
-    local success = pcall(function()
-        S_T:TeleportToPlaceInstance(placeId, jobId, game.Players.LocalPlayer)
-    end)
-    return success
-end
-
 local function TPReturner(placeId)
-    local Site;
+    local Site
     if foundAnything == "" then
         Site = S_H:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. placeId .. '/servers/Public?sortOrder=Asc&limit=100'))
     else
         Site = S_H:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. placeId .. '/servers/Public?sortOrder=Asc&limit=100&cursor=' .. foundAnything))
     end
+    local ID = ""
     if Site.nextPageCursor and Site.nextPageCursor ~= "null" and Site.nextPageCursor ~= nil then
         foundAnything = Site.nextPageCursor
     end
     local num = 0
     for i,v in pairs(Site.data) do
         local Possible = true
-        local ID = tostring(v.id)
-        if tonumber(v.maxPlayers) > tonumber(v.playing) and ID ~= game.JobId then
-            for _,Existing in pairs(AllIDs) do
-                if ID == tostring(Existing) then
-                    Possible = false
-                    break
-                end
+        ID = tostring(v.id)
+        if tonumber(v.maxPlayers) > tonumber(v.playing) then
+            if ID == game.JobId and isBloxFruits then
+                Possible = false
             end
-            if Possible then
-                for _,Failed in pairs(FailedIDs) do
-                    if ID == tostring(Failed) then
+            for _,Existing in pairs(AllIDs) do
+                if num ~= 0 then
+                    if ID == tostring(Existing) then
                         Possible = false
-                        break
+                    end
+                else
+                    if tonumber(actualHour) ~= tonumber(Existing) then
+                        pcall(function()
+                            delfile("server-hop-temp.json")
+                            AllIDs = {}
+                            table.insert(AllIDs, actualHour)
+                        end)
                     end
                 end
+                num = num + 1
             end
-            if Possible then
+            if Possible == true then
                 table.insert(AllIDs, ID)
                 wait()
                 pcall(function()
                     writefile("server-hop-temp.json", S_H:JSONEncode(AllIDs))
                     wait()
-                    local teleported = SmartTeleport(placeId, ID)
-                    if not teleported then
-                        table.insert(FailedIDs, ID)
+                    if isBloxFruits then
+                        local sb = RS:FindFirstChild("__ServerBrowser")
+                        if sb then
+                            sb:InvokeServer("teleport", ID)
+                        end
+                    else
+                        S_T:TeleportToPlaceInstance(placeId, ID, game.Players.LocalPlayer)
                     end
                 end)
                 wait(4)
             end
         end
-        num = num + 1
     end
 end
 
