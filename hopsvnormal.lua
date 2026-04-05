@@ -1,4 +1,5 @@
 local AllIDs = {}
+local FailedIDs = {}
 local foundAnything = ""
 local actualHour = os.date("!*t").hour
 local S_T = game:GetService("TeleportService")
@@ -16,16 +17,14 @@ if not File then
 end
 
 local function SmartTeleport(placeId, jobId)
+    if jobId == game.JobId then return false end
     local sb = RS:FindFirstChild("__ServerBrowser")
     if sb and sb:IsA("RemoteFunction") then
         local success = pcall(function()
             return sb:InvokeServer("teleport", jobId)
         end)
-        if success then
-            return true
-        end
+        if success then return true end
     end
-    
     local success = pcall(function()
         S_T:TeleportToPlaceInstance(placeId, jobId, game.Players.LocalPlayer)
     end)
@@ -39,42 +38,43 @@ local function TPReturner(placeId)
     else
         Site = S_H:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. placeId .. '/servers/Public?sortOrder=Asc&limit=100&cursor=' .. foundAnything))
     end
-    local ID = ""
     if Site.nextPageCursor and Site.nextPageCursor ~= "null" and Site.nextPageCursor ~= nil then
         foundAnything = Site.nextPageCursor
     end
-    local num = 0;
+    local num = 0
     for i,v in pairs(Site.data) do
         local Possible = true
-        ID = tostring(v.id)
-        if tonumber(v.maxPlayers) > tonumber(v.playing) then
+        local ID = tostring(v.id)
+        if tonumber(v.maxPlayers) > tonumber(v.playing) and ID ~= game.JobId then
             for _,Existing in pairs(AllIDs) do
-                if num ~= 0 then
-                    if ID == tostring(Existing) then
+                if ID == tostring(Existing) then
+                    Possible = false
+                    break
+                end
+            end
+            if Possible then
+                for _,Failed in pairs(FailedIDs) do
+                    if ID == tostring(Failed) then
                         Possible = false
-                    end
-                else
-                    if tonumber(actualHour) ~= tonumber(Existing) then
-                        local delFile = pcall(function()
-                            delfile("server-hop-temp.json")
-                            AllIDs = {}
-                            table.insert(AllIDs, actualHour)
-                        end)
+                        break
                     end
                 end
-                num = num + 1
             end
-            if Possible == true then
+            if Possible then
                 table.insert(AllIDs, ID)
                 wait()
                 pcall(function()
                     writefile("server-hop-temp.json", S_H:JSONEncode(AllIDs))
                     wait()
-                    SmartTeleport(placeId, ID)
+                    local teleported = SmartTeleport(placeId, ID)
+                    if not teleported then
+                        table.insert(FailedIDs, ID)
+                    end
                 end)
                 wait(4)
             end
         end
+        num = num + 1
     end
 end
 
